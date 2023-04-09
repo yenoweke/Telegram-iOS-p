@@ -28,26 +28,26 @@ open class TransformImageNode: ASDisplayNode {
     private var overlayColor: UIColor?
     private var overlayNode: ASDisplayNode?
 
-    private var captureProtectedContentLayer: CaptureProtectedContentLayer?
+    private var captureProtectedContentLayer: SampleBufferLayer?
 
     public var captureProtected: Bool = false {
         didSet {
             if self.captureProtected != oldValue {
                 if self.captureProtected {
                     if self.captureProtectedContentLayer == nil {
-                        let captureProtectedContentLayer = CaptureProtectedContentLayer()
+                        let captureProtectedContentLayer = takeSampleBufferLayer()
                         self.captureProtectedContentLayer = captureProtectedContentLayer
                         if #available(iOS 13.0, *) {
-                            captureProtectedContentLayer.preventsCapture = true
-                            captureProtectedContentLayer.preventsDisplaySleepDuringVideoPlayback = false
+                            captureProtectedContentLayer.layer.preventsCapture = true
+                            captureProtectedContentLayer.layer.preventsDisplaySleepDuringVideoPlayback = false
                         }
-                        captureProtectedContentLayer.frame = self.bounds
-                        self.layer.addSublayer(captureProtectedContentLayer)
+                        captureProtectedContentLayer.layer.frame = self.bounds
+                        self.layer.addSublayer(captureProtectedContentLayer.layer)
                         var hasImage = false
                         if let image = self.image {
                             hasImage = true
                             if let cmSampleBuffer = image.cmSampleBuffer {
-                                captureProtectedContentLayer.enqueue(cmSampleBuffer)
+                                captureProtectedContentLayer.layer.enqueue(cmSampleBuffer)
                             }
                         }
                         if hasImage {
@@ -59,8 +59,9 @@ open class TransformImageNode: ASDisplayNode {
                         }
                     }
                 } else if let captureProtectedContentLayer = self.captureProtectedContentLayer {
+                    captureProtectedContentLayer.layer.removeFromSuperlayer()
+                    captureProtectedContentLayer.isFreed = true
                     self.captureProtectedContentLayer = nil
-                    captureProtectedContentLayer.removeFromSuperlayer()
                     self.contents = self.image?.cgImage
                 }
             }
@@ -70,7 +71,7 @@ open class TransformImageNode: ASDisplayNode {
     open override var bounds: CGRect {
         didSet {
             if let captureProtectedContentLayer = self.captureProtectedContentLayer, super.bounds.size != oldValue.size {
-                captureProtectedContentLayer.frame = super.bounds
+                captureProtectedContentLayer.layer.frame = super.bounds
             }
         }
     }
@@ -81,7 +82,7 @@ open class TransformImageNode: ASDisplayNode {
                 overlayNode.frame = self.bounds
             }
             if let captureProtectedContentLayer = self.captureProtectedContentLayer, super.bounds.size != oldValue.size {
-                captureProtectedContentLayer.frame = super.bounds
+                captureProtectedContentLayer.layer.frame = super.bounds
             }
         }
     }
@@ -157,7 +158,7 @@ open class TransformImageNode: ASDisplayNode {
                         strongSelf.currentArguments = arguments
                         if let captureProtectedContentLayer = strongSelf.captureProtectedContentLayer {
                             if let cmSampleBuffer = image?.cmSampleBuffer {
-                                captureProtectedContentLayer.enqueue(cmSampleBuffer)
+                                captureProtectedContentLayer.layer.enqueue(cmSampleBuffer)
                             }
                         } else {
                             strongSelf.contents = image?.cgImage
@@ -200,7 +201,7 @@ open class TransformImageNode: ASDisplayNode {
                 if let image = updatedImage {
                     if let captureProtectedContentLayer = strongSelf.captureProtectedContentLayer {
                         if let cmSampleBuffer = image.cmSampleBuffer {
-                            captureProtectedContentLayer.enqueue(cmSampleBuffer)
+                            captureProtectedContentLayer.layer.enqueue(cmSampleBuffer)
                         }
                     } else {
                         strongSelf.contents = image.cgImage
@@ -277,12 +278,6 @@ open class TransformImageNode: ASDisplayNode {
     }
 }
 
-private class CaptureProtectedContentLayer: AVSampleBufferDisplayLayer {
-    override func action(forKey event: String) -> CAAction? {
-        return nullAction
-    }
-}
-
 open class TransformImageView: UIView {
     public var imageUpdated: ((UIImage?) -> Void)?
     public var contentAnimations: TransformImageNodeContentAnimations = []
@@ -293,7 +288,7 @@ open class TransformImageView: UIView {
     private var argumentsPromise = ValuePromise<TransformImageArguments>(ignoreRepeated: true)
     public private(set) var image: UIImage?
 
-    private var captureProtectedContentLayer: CaptureProtectedContentLayer?
+    private var captureProtectedContentLayer: SampleBufferLayer?
 
     private var overlayColor: UIColor?
     private var overlayView: UIView?
@@ -301,7 +296,7 @@ open class TransformImageView: UIView {
     open override var bounds: CGRect {
         didSet {
             if let captureProtectedContentLayer = self.captureProtectedContentLayer, super.bounds.size != oldValue.size {
-                captureProtectedContentLayer.frame = super.bounds
+                captureProtectedContentLayer.layer.frame = super.bounds
             }
         }
     }
@@ -312,7 +307,7 @@ open class TransformImageView: UIView {
                 overlayView.frame = self.bounds
             }
             if let captureProtectedContentLayer = self.captureProtectedContentLayer, super.bounds.size != oldValue.size {
-                captureProtectedContentLayer.frame = super.bounds
+                captureProtectedContentLayer.layer.frame = super.bounds
             }
         }
     }
@@ -322,19 +317,20 @@ open class TransformImageView: UIView {
             if self.captureProtected != oldValue {
                 if self.captureProtected {
                     if self.captureProtectedContentLayer == nil {
-                        let captureProtectedContentLayer = CaptureProtectedContentLayer()
-                        captureProtectedContentLayer.frame = self.bounds
-                        self.layer.addSublayer(captureProtectedContentLayer)
+                        let captureProtectedContentLayer = takeSampleBufferLayer()
+                        captureProtectedContentLayer.layer.frame = self.bounds
+                        self.layer.addSublayer(captureProtectedContentLayer.layer)
                         if let image = self.image {
                             if let cmSampleBuffer = image.cmSampleBuffer {
-                                captureProtectedContentLayer.enqueue(cmSampleBuffer)
+                                captureProtectedContentLayer.layer.enqueue(cmSampleBuffer)
                             }
                         }
                         self.layer.contents = nil
                     }
                 } else if let captureProtectedContentLayer = self.captureProtectedContentLayer {
+                    captureProtectedContentLayer.layer.removeFromSuperlayer()
+                    captureProtectedContentLayer.isFreed = true
                     self.captureProtectedContentLayer = nil
-                    captureProtectedContentLayer.removeFromSuperlayer()
                     self.layer.contents = self.image?.cgImage
                 }
             }
@@ -363,7 +359,7 @@ open class TransformImageView: UIView {
         self.currentTransform = nil
         self.layer.contents = nil
         self.image = nil
-        self.captureProtectedContentLayer?.flushAndRemoveImage()
+        self.captureProtectedContentLayer?.layer.flushAndRemoveImage()
     }
 
     public func setSignal(_ signal: Signal<(TransformImageArguments) -> DrawingContext?, NoError>, attemptSynchronously: Bool = false, dispatchOnDisplayLink: Bool = true) {
@@ -417,7 +413,7 @@ open class TransformImageView: UIView {
                         strongSelf.currentArguments = arguments
                         if let captureProtectedContentLayer = strongSelf.captureProtectedContentLayer {
                             if let cmSampleBuffer = image?.cmSampleBuffer {
-                                captureProtectedContentLayer.enqueue(cmSampleBuffer)
+                                captureProtectedContentLayer.layer.enqueue(cmSampleBuffer)
                             }
                         } else {
                             strongSelf.layer.contents = image?.cgImage
