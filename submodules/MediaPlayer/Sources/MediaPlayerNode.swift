@@ -5,25 +5,6 @@ import AsyncDisplayKit
 import SwiftSignalKit
 import AVFoundation
 
-private final class MediaPlayerNodeLayerNullAction: NSObject, CAAction {
-    @objc func run(forKey event: String, object anObject: Any, arguments dict: [AnyHashable : Any]?) {
-    }
-}
-
-private final class MediaPlayerNodeLayer: AVSampleBufferDisplayLayer {
-    override init() {
-        super.init()
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    override func action(forKey event: String) -> CAAction? {
-        return MediaPlayerNodeLayerNullAction()
-    }
-}
-
 private final class MediaPlayerNodeDisplayNode: ASDisplayNode {
     var updateInHierarchy: ((Bool) -> Void)?
     
@@ -66,7 +47,7 @@ public final class MediaPlayerNode: ASDisplayNode {
     
     private var videoNode: MediaPlayerNodeDisplayNode
     
-    private var videoLayer: AVSampleBufferDisplayLayer?
+    private var videoLayer: SampleBufferLayer?
     
     private let videoQueue: Queue
     
@@ -100,7 +81,7 @@ public final class MediaPlayerNode: ASDisplayNode {
     
     private func updateState() {
         if let (timebase, requestFrames, rotationAngle, aspect) = self.state {
-            if let videoLayer = self.videoLayer {
+            if let videoLayer = self.videoLayer?.layer {
                 videoQueue.async {
                     if videoLayer.controlTimebase !== timebase || videoLayer.status == .failed {
                         videoLayer.flush()
@@ -139,7 +120,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                         case let .delay(delay):
                             strongSelf.timer = SwiftSignalKit.Timer(timeout: delay, repeat: true, completion: {
                                 if let strongSelf = self, let videoLayer = strongSelf.videoLayer, let (_, requestFrames, _, _) = strongSelf.state, requestFrames, (strongSelf.videoInHierarchy || strongSelf.canPlaybackWithoutHierarchy) {
-                                    if videoLayer.isReadyForMoreMediaData {
+                                    if videoLayer.layer.isReadyForMoreMediaData {
                                         strongSelf.timer?.invalidate()
                                         strongSelf.timer = nil
                                         strongSelf.startPolling()
@@ -156,7 +137,7 @@ public final class MediaPlayerNode: ASDisplayNode {
     }
     
     private func poll(completion: @escaping (PollStatus) -> Void) {
-        if let (takeFrameQueue, takeFrame) = self.takeFrameAndQueue, let _ = self.videoLayer, let (timebase, _, _, _) = self.state {
+        if let (takeFrameQueue, takeFrame) = self.takeFrameAndQueue, let _ = self.videoLayer?.layer, let (timebase, _, _, _) = self.state {
             let layerTime = CMTimeGetSeconds(CMTimebaseGetTime(timebase))
             
             struct PollState {
@@ -171,7 +152,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                 guard let strongSelf = self, let videoLayer = strongSelf.videoLayer else {
                     return
                 }
-                if !videoLayer.isReadyForMoreMediaData {
+                if !videoLayer.layer.isReadyForMoreMediaData {
                     completion(.delay(max(1.0 / 30.0, state.maxTakenTime - layerTime)))
                     return
                 }
@@ -185,7 +166,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                             guard let strongSelf = self, let videoLayer = strongSelf.videoLayer else {
                                 return
                             }
-                            videoLayer.flush()
+                            videoLayer.layer.flush()
                         }
                         for i in 0 ..< frames.count {
                             let frame = frames[i]
@@ -207,7 +188,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                                 guard let strongSelf = self, let videoLayer = strongSelf.videoLayer else {
                                     return
                                 }
-                                videoLayer.enqueue(frame.sampleBuffer)
+                                videoLayer.layer.enqueue(frame.sampleBuffer)
                                 strongSelf.hasSentFramesToDisplay?()
                             }
                         }
@@ -222,7 +203,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                                 guard let strongSelf = self, let videoLayer = strongSelf.videoLayer else {
                                     return
                                 }
-                                videoLayer.flush()
+                                videoLayer.layer.flush()
                             }
                         }
                         
@@ -236,7 +217,7 @@ public final class MediaPlayerNode: ASDisplayNode {
                                 guard let strongSelf = self, let videoLayer = strongSelf.videoLayer else {
                                     return
                                 }
-                                videoLayer.enqueue(frame.sampleBuffer)
+                                videoLayer.layer.enqueue(frame.sampleBuffer)
                                 strongSelf.hasSentFramesToDisplay?()
                             }
                             
@@ -392,17 +373,18 @@ public final class MediaPlayerNode: ASDisplayNode {
         self.addSubnode(self.videoNode)
         
         self.videoQueue.async { [weak self] in
-            let videoLayer = MediaPlayerNodeLayer()
-            videoLayer.videoGravity = .resize
+            let videoLayer = takeSampleBufferLayer()
+            videoLayer.layer.videoGravity = .resize
             Queue.mainQueue().async {
                 if let strongSelf = self {
+                    strongSelf.videoLayer?.isFreed = true
                     strongSelf.videoLayer = videoLayer
                     if #available(iOS 13.0, *) {
-                        videoLayer.preventsCapture = captureProtected
+                        videoLayer.layer.preventsCapture = captureProtected
                     }
                     strongSelf.updateLayout()
                     
-                    strongSelf.layer.addSublayer(videoLayer)
+                    strongSelf.layer.addSublayer(videoLayer.layer)
                     
                     strongSelf.updateState()
                 }
@@ -412,10 +394,11 @@ public final class MediaPlayerNode: ASDisplayNode {
     
     deinit {
         assert(Queue.mainQueue().isCurrent())
-        self.videoLayer?.removeFromSuperlayer()
+        self.videoLayer?.isFreed = true
+        self.videoLayer?.layer.removeFromSuperlayer()
         
         if let _ = self.takeFrameAndQueue {
-            if let videoLayer = self.videoLayer {
+            if let videoLayer = self.videoLayer?.layer {
                 videoLayer.flushAndRemoveImage()
                 
                 Queue.mainQueue().after(1.0, {
@@ -452,7 +435,7 @@ public final class MediaPlayerNode: ASDisplayNode {
             fittedRect = bounds
         }
         
-        if let videoLayer = self.videoLayer {
+        if let videoLayer = self.videoLayer?.layer {
             videoLayer.position = CGPoint(x: fittedRect.midX, y: fittedRect.midY)
             videoLayer.bounds = CGRect(origin: CGPoint(), size: fittedRect.size)
         }
@@ -460,7 +443,7 @@ public final class MediaPlayerNode: ASDisplayNode {
     }
     
     public func reset() {
-        self.videoLayer?.flush()
+        self.videoLayer?.layer.flush()
     }
 
     public func setCanPlaybackWithoutHierarchy(_ canPlaybackWithoutHierarchy: Bool) {
