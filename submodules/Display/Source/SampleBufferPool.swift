@@ -81,7 +81,6 @@ private func addToPoolIfNeeded() -> Bool {
     #if targetEnvironment(simulator)
     return false
     #else
-    #endif
     let maximumPoolSize = 8
     var poolSize = pool.with({ layers in layers.count })
     if poolSize >= maximumPoolSize {
@@ -102,4 +101,5 @@ private func addToPoolIfNeeded() -> Bool {
         }
     }
     return true
+    #endif
 }
