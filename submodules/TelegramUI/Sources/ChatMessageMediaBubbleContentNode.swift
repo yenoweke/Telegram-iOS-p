@@ -11,39 +11,6 @@ import AccountContext
 import GridMessageSelectionNode
 import ChatControllerInteraction
 
-import OSLog
-
-final class DebugSign {
-    
-    struct Item {
-        let state: AnyObject
-        let name: StaticString
-        var stop: (() -> Void)!
-        var event: ((StaticString, String) -> Void)!
-    }
-    
-    @available(iOS 15.0, *)
-    static let signposter = OSSignposter()
-    
-    static func start(name: StaticString, _ message: String = "") -> Item? {
-        return nil
-//        if #available(iOS 15.0, *) {
-//            let signpostID = signposter.makeSignpostID()
-//            let state = signposter.beginInterval(name, id: signpostID, "message \(message)")
-//            var item = Item(state: state as AnyObject, name: name, stop: {})
-//            item.stop = {
-//                signposter.endInterval(name, state)
-//            }
-//            item.event = { name, message in
-//                signposter.emitEvent(name, id: signpostID, "\(message)")
-//            }
-//            return item
-//        } else {
-//            return nil
-//        }
-    }
-}
-
 class ChatMessageMediaBubbleContentNode: ChatMessageBubbleContentNode {
     override var supportsMosaic: Bool {
         return true
